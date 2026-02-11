@@ -33,8 +33,9 @@ For more detailed information and examples, refer to the docstring of the
 
 from __future__ import annotations
 import datetime
+import enum
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Type, Union
 
 from typing_extensions import Annotated
 import uuid
@@ -480,6 +481,68 @@ def _json_schema_to_pydantic_type(
         if len(all_of_types) == 1:
             return all_of_types[0]
         return tuple(all_of_types)
+
+    # Handle const keyword (single-value enum)
+    const_value = json_schema.get("const")
+    if const_value is not None:
+        # Literal only supports certain primitive literal types at runtime; provide a clear
+        # error if the JSON Schema uses an unsupported const value type (e.g., object/array).
+        if isinstance(const_value, (bool, int, str, bytes)):
+            # Literal types with runtime values are valid but mypy needs type: ignore
+            return Literal[const_value]  # type: ignore[valid-type]
+        raise ValueError(
+            f"Unsupported const value type for Literal: {type(const_value)!r} "
+            f"with value {const_value!r} from schema {json_schema!r}"
+        )
+
+    # Handle enum keyword
+    enum_values = json_schema.get("enum")
+    if enum_values is not None:
+        # Get enum name from title or use the provided name_ or fallback
+        enum_name = json_schema.get("title") or name_ or "DynamicEnum"
+
+        # Create safe enum member names by using VALUE_{i} naming scheme
+        # This avoids issues with invalid Python identifiers (special chars, spaces, keywords, etc.)
+        enum_members = {f"VALUE_{i}": v for i, v in enumerate(enum_values)}
+
+        # Determine base type from schema type
+        schema_type = json_schema.get("type")
+
+        # Handle when type is a list (e.g., ["string", "null"])
+        # Select the non-null type for enum base type
+        if isinstance(schema_type, list):
+            # Filter out "null" and use the first remaining type
+            non_null_types = [t for t in schema_type if t != "null"]
+            schema_type = non_null_types[0] if non_null_types else None
+
+        # If type is not specified, try to infer from enum values
+        # Only infer if all non-None values are of the same type
+        if schema_type is None and enum_values:
+            non_none_values = [v for v in enum_values if v is not None]
+            if non_none_values:
+                # Check if all values are of the same type
+                first_val = non_none_values[0]
+                if isinstance(first_val, bool):
+                    # bool must be checked first since bool is a subclass of int
+                    if all(isinstance(v, bool) for v in non_none_values):
+                        schema_type = "boolean"
+                elif isinstance(first_val, int):
+                    if all(isinstance(v, int) and not isinstance(v, bool) for v in non_none_values):
+                        schema_type = "integer"
+                elif isinstance(first_val, str):
+                    if all(isinstance(v, str) for v in non_none_values):
+                        schema_type = "string"
+                # If types are mixed, schema_type remains None -> generic enum
+
+        if schema_type == "integer":
+            # Create int-based enum - type: ignore needed for dynamic Enum creation
+            return enum.Enum(enum_name, enum_members, type=int)  # type: ignore[misc]
+        elif schema_type == "string":
+            # Create str-based enum - type: ignore needed for dynamic Enum creation
+            return enum.Enum(enum_name, enum_members, type=str)  # type: ignore[misc]
+        else:
+            # Create generic enum for other types or mixed types
+            return enum.Enum(enum_name, enum_members)
 
     type_ = json_schema.get("type")
 
