@@ -494,12 +494,9 @@ def _json_schema_to_pydantic_type(
         # Get enum name from title or use the provided name_ or fallback
         enum_name = json_schema.get("title") or name_ or "DynamicEnum"
         
-        # Create safe enum member names by using the value itself as both name and value
-        # This avoids issues with invalid Python identifiers
-        # Enum() accepts a dict where keys become member names, but we can also pass
-        # a list of (name, value) tuples or just values (names auto-generated)
-        # Using a simple sequential naming scheme for safety
-        enum_members = {f"ITEM_{i}": v for i, v in enumerate(enum_values)}
+        # Create safe enum member names by using VALUE_{i} naming scheme
+        # This avoids issues with invalid Python identifiers (special chars, spaces, keywords, etc.)
+        enum_members = {f"VALUE_{i}": v for i, v in enumerate(enum_values)}
         
         # Determine base type from schema type
         schema_type = json_schema.get("type")
