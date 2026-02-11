@@ -33,8 +33,9 @@ For more detailed information and examples, refer to the docstring of the
 
 from __future__ import annotations
 import datetime
+import enum
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Type, Union
 
 from typing_extensions import Annotated
 import uuid
@@ -480,6 +481,29 @@ def _json_schema_to_pydantic_type(
         if len(all_of_types) == 1:
             return all_of_types[0]
         return tuple(all_of_types)
+
+    # Handle const keyword (single-value enum)
+    const_value = json_schema.get("const")
+    if const_value is not None:
+        return Literal[const_value]  # type: ignore[valid-type]
+
+    # Handle enum keyword
+    enum_values = json_schema.get("enum")
+    if enum_values is not None:
+        # Get enum name from title or use the provided name_ or fallback
+        enum_name = json_schema.get("title") or name_ or "DynamicEnum"
+        
+        # Determine base type from schema type
+        schema_type = json_schema.get("type")
+        if schema_type == "integer":
+            # Create int-based enum
+            return enum.Enum(enum_name, {str(v): v for v in enum_values}, type=int)  # type: ignore[misc]
+        elif schema_type == "string":
+            # Create str-based enum
+            return enum.Enum(enum_name, {str(v): v for v in enum_values}, type=str)  # type: ignore[misc]
+        else:
+            # Create generic enum for other types
+            return enum.Enum(enum_name, {str(v): v for v in enum_values})
 
     type_ = json_schema.get("type")
 
