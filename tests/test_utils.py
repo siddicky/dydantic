@@ -280,13 +280,13 @@ def test_enum_string_validation():
     """Test that string enum values are properly validated."""
     schema = InlineEnumModel.model_json_schema()
     DynamicModel = create_model_from_schema(schema)
-    
+
     # Valid enum values should work
     valid_data = {"color": "red", "size": 2}
     result = DynamicModel.model_validate(valid_data)
     assert result.color.value == "red"
     assert result.size.value == 2
-    
+
     # Invalid enum values should be rejected
     invalid_data = {"color": "yellow", "size": 2}
     with pytest.raises(ValidationError) as exc_info:
@@ -298,12 +298,12 @@ def test_enum_integer_validation():
     """Test that integer enum values are properly validated."""
     schema = InlineEnumModel.model_json_schema()
     DynamicModel = create_model_from_schema(schema)
-    
+
     # Valid enum values should work
     valid_data = {"color": "blue", "size": 3}
     result = DynamicModel.model_validate(valid_data)
     assert result.size.value == 3
-    
+
     # Invalid enum values should be rejected
     invalid_data = {"color": "red", "size": 99}
     with pytest.raises(ValidationError) as exc_info:
@@ -316,7 +316,7 @@ def test_enum_ref_resolution():
     # Use the existing Project model which has enums in $defs
     schema = Project.model_json_schema()
     DynamicProject = create_model_from_schema(schema)
-    
+
     # Valid data with proper enum values
     valid_data = {
         "project_id": "3dd68ce0-91af-4782-8fe0-3e5fd4ff9a57",
@@ -327,7 +327,7 @@ def test_enum_ref_resolution():
     }
     result = DynamicProject.model_validate(valid_data)
     assert result.status.value == "active"
-    
+
     # Invalid enum value should be rejected
     invalid_data = valid_data.copy()
     invalid_data["status"] = "invalid_status"
@@ -341,18 +341,18 @@ def test_enum_roundtrip():
     # Original model with enum
     original_data = {"color": "green", "size": 2}
     original_instance = InlineEnumModel.model_validate(original_data)
-    
+
     # Generate schema and create dynamic model
     schema = InlineEnumModel.model_json_schema()
     DynamicModel = create_model_from_schema(schema)
-    
+
     # Validate same data with dynamic model
     dynamic_instance = DynamicModel.model_validate(original_data)
-    
+
     # Values should match
     assert dynamic_instance.color.value == original_instance.color.value
     assert dynamic_instance.size.value == original_instance.size.value
-    
+
     # Serialized forms should be compatible
     assert dynamic_instance.model_dump() == original_instance.model_dump()
 
@@ -362,7 +362,7 @@ def test_enum_in_nested_model():
     # Project model has nested Member with RoleEnum
     schema = Project.model_json_schema()
     DynamicProject = create_model_from_schema(schema)
-    
+
     data = {
         "project_id": "3dd68ce0-91af-4782-8fe0-3e5fd4ff9a57",
         "project_name": "Test Project",
@@ -377,10 +377,10 @@ def test_enum_in_nested_model():
             }
         ],
     }
-    
+
     result = DynamicProject.model_validate(data)
     assert result.members[0].role.value == "admin"
-    
+
     # Invalid role should be rejected
     data["members"][0]["role"] = "invalid_role"
     with pytest.raises(ValidationError) as exc_info:
@@ -399,15 +399,15 @@ def test_const_keyword():
         },
         "required": ["constant_value", "number_const"],
     }
-    
+
     DynamicModel = create_model_from_schema(schema)
-    
+
     # Valid data with correct const values
     valid_data = {"constant_value": "fixed", "number_const": 42}
     result = DynamicModel.model_validate(valid_data)
     assert result.constant_value == "fixed"
     assert result.number_const == 42
-    
+
     # Invalid const value should be rejected
     invalid_data = {"constant_value": "different", "number_const": 42}
     with pytest.raises(ValidationError) as exc_info:
@@ -434,19 +434,19 @@ def test_inline_enum_in_schema():
         },
         "required": ["status", "priority"],
     }
-    
+
     DynamicModel = create_model_from_schema(schema)
-    
+
     # Valid data
     valid_data = {"status": "approved", "priority": 2}
     result = DynamicModel.model_validate(valid_data)
     assert result.status.value == "approved"
     assert result.priority.value == 2
-    
+
     # Invalid status
     with pytest.raises(ValidationError):
         DynamicModel.model_validate({"status": "unknown", "priority": 2})
-    
+
     # Invalid priority
     with pytest.raises(ValidationError):
         DynamicModel.model_validate({"status": "pending", "priority": 99})
@@ -465,17 +465,88 @@ def test_mixed_type_enum():
         },
         "required": ["mixed_field"],
     }
-    
+
     DynamicModel = create_model_from_schema(schema)
-    
+
     # Valid string value
     result1 = DynamicModel.model_validate({"mixed_field": "option_a"})
     assert result1.mixed_field.value == "option_a"
-    
+
     # Valid integer value
     result2 = DynamicModel.model_validate({"mixed_field": 1})
     assert result2.mixed_field.value == 1
-    
+
     # Invalid value should be rejected
     with pytest.raises(ValidationError):
         DynamicModel.model_validate({"mixed_field": "invalid"})
+
+
+def test_enum_with_list_type():
+    """Test enum when type is a list (e.g., ['string', 'null'])."""
+    schema = {
+        "title": "ListTypeEnumModel",
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": ["string", "null"],
+                "enum": ["active", "inactive", None],
+                "title": "Status",
+            }
+        },
+        "required": [],
+    }
+
+    DynamicModel = create_model_from_schema(schema)
+
+    # Valid string value
+    result1 = DynamicModel.model_validate({"status": "active"})
+    assert result1.status.value == "active"
+    # Should be str-based enum for proper constraint handling
+    assert issubclass(type(result1.status), str)
+
+    # Valid None value
+    result2 = DynamicModel.model_validate({"status": None})
+    assert result2.status is None
+
+    # Invalid value should be rejected
+    with pytest.raises(ValidationError):
+        DynamicModel.model_validate({"status": "invalid"})
+
+
+def test_enum_type_inference():
+    """Test enum type inference when type is not specified."""
+    # Test integer inference
+    schema1 = {
+        "title": "InferredIntModel",
+        "type": "object",
+        "properties": {
+            "priority": {
+                "enum": [1, 2, 3],
+                "title": "Priority",
+            }
+        },
+        "required": ["priority"],
+    }
+
+    Model1 = create_model_from_schema(schema1)
+    result1 = Model1.model_validate({"priority": 2})
+    assert result1.priority.value == 2
+    assert issubclass(type(result1.priority), int)
+
+    # Test string inference
+    schema2 = {
+        "title": "InferredStrModel",
+        "type": "object",
+        "properties": {
+            "color": {
+                "enum": ["red", "green", "blue"],
+                "title": "Color",
+            }
+        },
+        "required": ["color"],
+    }
+
+    Model2 = create_model_from_schema(schema2)
+    result2 = Model2.model_validate({"color": "red"})
+    assert result2.color.value == "red"
+    assert issubclass(type(result2.color), str)
