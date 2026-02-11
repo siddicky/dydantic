@@ -450,3 +450,32 @@ def test_inline_enum_in_schema():
     # Invalid priority
     with pytest.raises(ValidationError):
         DynamicModel.model_validate({"status": "pending", "priority": 99})
+
+
+def test_mixed_type_enum():
+    """Test enum with mixed types (no type specified in schema)."""
+    schema = {
+        "title": "MixedTypeEnumModel",
+        "type": "object",
+        "properties": {
+            "mixed_field": {
+                "enum": ["option_a", 1, "option_b", 2],
+                "title": "MixedField",
+            }
+        },
+        "required": ["mixed_field"],
+    }
+    
+    DynamicModel = create_model_from_schema(schema)
+    
+    # Valid string value
+    result1 = DynamicModel.model_validate({"mixed_field": "option_a"})
+    assert result1.mixed_field.value == "option_a"
+    
+    # Valid integer value
+    result2 = DynamicModel.model_validate({"mixed_field": 1})
+    assert result2.mixed_field.value == 1
+    
+    # Invalid value should be rejected
+    with pytest.raises(ValidationError):
+        DynamicModel.model_validate({"mixed_field": "invalid"})
