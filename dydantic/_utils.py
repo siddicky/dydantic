@@ -485,6 +485,7 @@ def _json_schema_to_pydantic_type(
     # Handle const keyword (single-value enum)
     const_value = json_schema.get("const")
     if const_value is not None:
+        # Literal types with runtime values are valid but mypy needs type: ignore
         return Literal[const_value]  # type: ignore[valid-type]
 
     # Handle enum keyword
@@ -493,17 +494,24 @@ def _json_schema_to_pydantic_type(
         # Get enum name from title or use the provided name_ or fallback
         enum_name = json_schema.get("title") or name_ or "DynamicEnum"
         
+        # Create safe enum member names by using the value itself as both name and value
+        # This avoids issues with invalid Python identifiers
+        # Enum() accepts a dict where keys become member names, but we can also pass
+        # a list of (name, value) tuples or just values (names auto-generated)
+        # Using a simple sequential naming scheme for safety
+        enum_members = {f"ITEM_{i}": v for i, v in enumerate(enum_values)}
+        
         # Determine base type from schema type
         schema_type = json_schema.get("type")
         if schema_type == "integer":
-            # Create int-based enum
-            return enum.Enum(enum_name, {str(v): v for v in enum_values}, type=int)  # type: ignore[misc]
+            # Create int-based enum - type: ignore needed for dynamic Enum creation
+            return enum.Enum(enum_name, enum_members, type=int)  # type: ignore[misc]
         elif schema_type == "string":
-            # Create str-based enum
-            return enum.Enum(enum_name, {str(v): v for v in enum_values}, type=str)  # type: ignore[misc]
+            # Create str-based enum - type: ignore needed for dynamic Enum creation
+            return enum.Enum(enum_name, enum_members, type=str)  # type: ignore[misc]
         else:
             # Create generic enum for other types
-            return enum.Enum(enum_name, {str(v): v for v in enum_values})
+            return enum.Enum(enum_name, enum_members)
 
     type_ = json_schema.get("type")
 
