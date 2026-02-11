@@ -485,8 +485,15 @@ def _json_schema_to_pydantic_type(
     # Handle const keyword (single-value enum)
     const_value = json_schema.get("const")
     if const_value is not None:
-        # Literal types with runtime values are valid but mypy needs type: ignore
-        return Literal[const_value]  # type: ignore[valid-type]
+        # Literal only supports certain primitive literal types at runtime; provide a clear
+        # error if the JSON Schema uses an unsupported const value type (e.g., object/array).
+        if isinstance(const_value, (bool, int, str, bytes)):
+            # Literal types with runtime values are valid but mypy needs type: ignore
+            return Literal[const_value]  # type: ignore[valid-type]
+        raise ValueError(
+            f"Unsupported const value type for Literal: {type(const_value)!r} "
+            f"with value {const_value!r} from schema {json_schema!r}"
+        )
 
     # Handle enum keyword
     enum_values = json_schema.get("enum")
